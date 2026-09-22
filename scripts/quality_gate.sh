@@ -29,10 +29,12 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 echo "[3/7] Rust check"
 cargo check -q
+cargo test --workspace
 
 echo "[4/7] Python format + lint"
 uv run ruff format --check python scripts parity_tests
 uv run ruff check python scripts parity_tests
+uv run python scripts/generate_language_data.py --check
 
 echo "[5/7] Build release native extension"
 uv run maturin develop --release
@@ -41,8 +43,8 @@ echo "[6/7] Local API tests"
 uv run pytest -q parity_tests/local
 
 if [[ "${FULL}" -eq 1 ]]; then
-  echo "[7/7] Full parity tests (upstream fetched on main)"
-  uv run ./scripts/run_parity_tests.sh
+  echo "[7/7] Frozen reference corpus and batch parity"
+  uv run pytest -q parity_tests/comparison
 else
-  echo "[7/7] Skipped upstream parity tests (pass --full to enable)"
+  echo "[7/7] Skipped reference corpus (pass --full to enable)"
 fi

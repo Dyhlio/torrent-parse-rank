@@ -7,13 +7,13 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["Goldy"]
 description = "A high-performance Rust implementation of The Best Damn Filename Parser You've Ever Used!"
-homepage = "https://github.com/g0ldyy/torrent-parse-rank"
-repository = "https://github.com/g0ldyy/torrent-parse-rank"
+homepage = "https://github.com/Dyhlio/torrent-parse-rank"
+repository = "https://github.com/Dyhlio/torrent-parse-rank"
 
 [workspace.dependencies]
 aho-corasick = "1.1.4"
@@ -27,6 +27,5 @@ pyo3 = { version = "0.28.2", features = ["extension-module", "abi3-py310"] }
 regex-syntax = "0.8.10"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
-strsim = "0.11.1"
 thiserror = "2.0.18"
 unicode-normalization = "0.1.25"

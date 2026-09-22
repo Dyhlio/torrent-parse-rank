@@ -1,8 +1,7 @@
 import pytest
 
 LEGACY_HDR10_CASES = {
-    "Spider-Man - Complete Movie Collection (2002-2022) "
-    "1080p.HEVC.HDR10.1920x800.x265. DTS-HD",
+    "Spider-Man - Complete Movie Collection (2002-2022) 1080p.HEVC.HDR10.1920x800.x265. DTS-HD",
     "Агентство / The Agency / Сезон: 1 / Серии: 1-10 из 10 "
     "[2024 HEVC HDR10 Dolby Vision WEB-DL 2160p 4k] MVO (HDRezka Studio) "
     "+ DVO (Viruse Project) + Original + Sub (Eng)",

@@ -3,11 +3,21 @@
 from functools import lru_cache
 from typing import Any
 
-from torrent_parse_rank_native._native import _RtnPatternSet, rtn_normalize_title
+from torrent_parse_rank_native._native import (
+    _RtnPatternSet,
+    rtn_language_matches,
+    rtn_normalize_title,
+)
 
 from ._native_bridge import pattern_key_to_json, pattern_list_key
 
 translationTable: dict[str, Any] = {}
+
+
+def language_matches(language: str, preference: str) -> bool:
+    if type(language) is not str or type(preference) is not str:
+        raise TypeError("Language and preference must be strings.")
+    return rtn_language_matches(language, preference)
 
 
 def normalize_title(raw_title: str, lower: bool = True) -> str:

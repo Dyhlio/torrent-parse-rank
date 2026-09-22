@@ -5,9 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PCRE2_SYS_STATIC="${PCRE2_SYS_STATIC:-1}"
 
 "${ROOT_DIR}/scripts/fetch_upstream_tests.sh"
+# Extract upstream rules separately; the fork's checked-in catalogue is authoritative.
 python "${ROOT_DIR}/scripts/extract_ptt_handlers.py" \
-  --source "${ROOT_DIR}/.upstream-tests-cache/PTT/PTT/handlers.py" \
-  --check
+  --source "${ROOT_DIR}/.upstream-tests-cache/PTT/PTT/handlers.py"
 
 for keyword_file in \
   combined-keywords.txt \

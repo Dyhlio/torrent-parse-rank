@@ -254,6 +254,11 @@ fn ptt_translate_langs(langs: Vec<String>) -> Vec<String> {
 }
 
 #[pyfunction]
+fn rtn_language_matches(language: &str, preference: &str) -> bool {
+    rtn_core::language_matches(language, preference)
+}
+
+#[pyfunction]
 fn ptt_languages_translation_table(py: Python<'_>) -> PyResult<Py<PyAny>> {
     let dict = PyDict::new(py);
     for (key, value) in languages_translation_table() {
@@ -466,6 +471,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ptt_parse_many, m)?)?;
     m.add_function(wrap_pyfunction!(ptt_clean_title, m)?)?;
     m.add_function(wrap_pyfunction!(ptt_translate_langs, m)?)?;
+    m.add_function(wrap_pyfunction!(rtn_language_matches, m)?)?;
     m.add_function(wrap_pyfunction!(ptt_languages_translation_table, m)?)?;
 
     m.add_function(wrap_pyfunction!(rtn_parse, m)?)?;

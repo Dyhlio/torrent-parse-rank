@@ -37,6 +37,7 @@ NON_ANIME = {
     "ta",
     "ru",
     "ua",
+    "uk",
     "th",
     "it",
     "ar",
@@ -73,7 +74,7 @@ NON_ANIME = {
     "no",
     "ms",
 }
-COMMON = {"de", "es", "hi", "ta", "ru", "ua", "th", "it", "zh", "ar", "fr"}
+COMMON = {"de", "es", "hi", "ta", "ru", "ua", "uk", "th", "it", "zh", "ar", "fr"}
 ALL = ANIME | NON_ANIME
 
 

@@ -13,7 +13,6 @@ fancy-regex.workspace = true
 ptt-core = { path = "../ptt-core" }
 serde.workspace = true
 serde_json.workspace = true
-strsim.workspace = true
 thiserror.workspace = true
 unicode-normalization.workspace = true
 

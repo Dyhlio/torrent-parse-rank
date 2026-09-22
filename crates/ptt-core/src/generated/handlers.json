@@ -4163,7 +4163,7 @@
         "remove": true
       },
       "kind": "regex",
-      "pattern": "\\b(?:MAL(?:ay)?|malayalam)\\b",
+      "pattern": "\\b(?:MAL|malayalam)\\b",
       "flags": 2,
       "transform": "uniq_concat(value('ml'))"
     },
@@ -5593,6 +5593,19 @@
       "pattern": "acesse o original",
       "flags": 2,
       "transform": "boolean"
+    },
+    {
+      "name": "languages",
+      "options": {
+        "skipIfAlreadyFound": false,
+        "skipFromTitle": false,
+        "skipIfFirst": false,
+        "remove": true
+      },
+      "kind": "regex",
+      "pattern": "\\bVOF\\b",
+      "flags": 2,
+      "transform": "uniq_concat(value('fr'))"
     },
     {
       "name": "title",

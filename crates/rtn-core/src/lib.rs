@@ -3,9 +3,8 @@ use std::collections::{BTreeSet, HashSet};
 use fancy_regex::RegexBuilder;
 use ptt_core::parse_title;
 use serde_json::{Map, Number, Value};
-use strsim::normalized_levenshtein;
 use thiserror::Error;
-use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Error)]
 pub enum RtnError {
@@ -21,6 +20,72 @@ pub enum RtnError {
 
 fn map_str<'a>(map: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     map.get(key).and_then(Value::as_str)
+}
+
+pub fn language_matches(language: &str, preference: &str) -> bool {
+    let language = language.to_lowercase();
+    let preference = preference.to_lowercase();
+    language == preference || language.starts_with(&(preference + "-"))
+}
+
+fn matches_languages(language: &str, preferences: &HashSet<String>) -> bool {
+    preferences
+        .iter()
+        .any(|preference| language_matches(language, preference))
+}
+
+fn is_height_layout(value: &str) -> bool {
+    let parts: Vec<_> = value.split('.').collect();
+    parts.len() == 3
+        && parts.iter().all(|part| {
+            !part.is_empty() && part.len() <= 2 && part.bytes().all(|b| b.is_ascii_digit())
+        })
+        && parts[0].parse::<u8>().is_ok_and(|n| n > 0)
+        && matches!(parts[1], "0" | "1" | "2")
+        && parts[2].parse::<u8>().is_ok_and(|n| n > 0)
+}
+
+fn custom_rank_entry<'a>(settings: &'a Value, category: &str, key: &str) -> Option<&'a Value> {
+    let entries = settings.get("custom_ranks")?.get(category)?;
+    let serialized_key = match key {
+        "three_d" => "3d",
+        "10bit" => "bit10",
+        _ => key,
+    };
+    let entry = entries.get(serialized_key).filter(|value| !value.is_null());
+    entry.or_else(|| match key {
+        "dts_hd" => entries.get("dts_lossy"),
+        "dts_x" => entries.get("dts_lossless"),
+        _ => None,
+    })
+}
+
+fn indel_similarity(left: &str, right: &str) -> f64 {
+    let left: Vec<char> = left.chars().collect();
+    let right: Vec<char> = right.chars().collect();
+    let total = left.len() + right.len();
+    if total == 0 {
+        return 1.0;
+    }
+    let (short, long) = if left.len() <= right.len() {
+        (&left, &right)
+    } else {
+        (&right, &left)
+    };
+    let mut lengths = vec![0; short.len() + 1];
+    for a in long {
+        let mut previous = 0;
+        for (index, b) in short.iter().enumerate() {
+            let current = lengths[index + 1];
+            lengths[index + 1] = if a == b {
+                previous + 1
+            } else {
+                current.max(lengths[index])
+            };
+            previous = current;
+        }
+    }
+    1.0 - (total - 2 * lengths[short.len()]) as f64 / total as f64
 }
 
 fn map_bool(map: &Map<String, Value>, key: &str) -> bool {
@@ -62,16 +127,16 @@ fn pattern_text(pattern: &Value) -> &str {
 
 const ANIME_LANGS: &[&str] = &["ja", "zh", "ko"];
 const NON_ANIME_LANGS: &[&str] = &[
-    "de", "es", "hi", "ta", "ru", "ua", "th", "it", "ar", "pt", "fr", "pa", "mr", "gu", "te", "kn",
-    "ml", "vi", "id", "tr", "he", "fa", "el", "lt", "lv", "et", "pl", "cs", "sk", "hu", "ro", "bg",
-    "sr", "hr", "sl", "nl", "da", "fi", "sv", "no", "ms",
+    "de", "es", "hi", "ta", "ru", "ua", "uk", "th", "it", "ar", "pt", "fr", "pa", "mr", "gu", "te",
+    "kn", "ml", "vi", "id", "tr", "he", "fa", "el", "lt", "lv", "et", "pl", "cs", "sk", "hu", "ro",
+    "bg", "sr", "hr", "sl", "nl", "da", "fi", "sv", "no", "ms",
 ];
 const COMMON_LANGS: &[&str] = &[
-    "de", "es", "hi", "ta", "ru", "ua", "th", "it", "zh", "ar", "fr",
+    "de", "es", "hi", "ta", "ru", "ua", "uk", "th", "it", "zh", "ar", "fr",
 ];
 
 const EXTRA_RULES: [(&str, &str, &str); 15] = [
-    ("_3d", "extras", "three_d"),
+    ("3d", "extras", "three_d"),
     ("converted", "extras", "converted"),
     ("documentary", "extras", "documentary"),
     ("dubbed", "extras", "dubbed"),
@@ -168,12 +233,14 @@ fn hdr_key(hdr: &str) -> Option<&'static str> {
 
 fn audio_mapping(audio: &str) -> Option<(&'static str, &'static str)> {
     match audio {
-        "AAC" => Some(("audio", "aac")),
+        "AAC" | "HE-AAC" | "HE-AACv2" => Some(("audio", "aac")),
         "Atmos" => Some(("audio", "atmos")),
         "Dolby Digital" => Some(("audio", "dolby_digital")),
         "Dolby Digital Plus" => Some(("audio", "dolby_digital_plus")),
-        "DTS Lossy" => Some(("audio", "dts_lossy")),
-        "DTS Lossless" => Some(("audio", "dts_lossless")),
+        "DTS Lossy" | "DTS-HD HRA" => Some(("audio", "dts_lossy")),
+        "DTS Lossless" | "DTS-HD MA" => Some(("audio", "dts_lossless")),
+        "DTS-HD" => Some(("audio", "dts_hd")),
+        "DTS-X" => Some(("audio", "dts_x")),
         "FLAC" => Some(("audio", "flac")),
         "MP3" => Some(("audio", "mp3")),
         "TrueHD" => Some(("audio", "truehd")),
@@ -230,7 +297,7 @@ pub fn normalize_title(raw_title: &str, lower: bool) -> String {
     };
 
     let mut translated = String::with_capacity(base.len());
-    for ch in base.nfkd().filter(|c| !is_combining_mark(*c)) {
+    for ch in base.nfkc() {
         if let Some(rep) = translate_char(ch) {
             translated.push_str(rep);
         } else {
@@ -402,7 +469,7 @@ pub fn parse(raw_title: &str, translate_langs: bool) -> Result<Map<String, Value
         "normalized_title".to_string(),
         Value::String(normalize_title(&parsed_title, true)),
     );
-    data.insert("_3d".to_string(), Value::Bool(three_d));
+    data.insert("3d".to_string(), Value::Bool(three_d));
 
     Ok(data)
 }
@@ -472,7 +539,7 @@ pub fn get_lev_ratio(
 
     let correct_norm = normalize_title(correct_title, true);
     let mut update_best = |candidate: &str| {
-        let score = normalized_levenshtein(candidate, &parsed_norm);
+        let score = indel_similarity(candidate, &parsed_norm);
         if score >= threshold && score > best {
             best = score;
         }
@@ -542,12 +609,7 @@ fn custom_rank_bool(
     field: &str,
     default: bool,
 ) -> bool {
-    settings
-        .get("custom_ranks")
-        .and_then(Value::as_object)
-        .and_then(|obj| obj.get(category))
-        .and_then(Value::as_object)
-        .and_then(|obj| obj.get(key))
+    custom_rank_entry(settings, category, key)
         .and_then(Value::as_object)
         .and_then(|obj| obj.get(field))
         .and_then(Value::as_bool)
@@ -555,12 +617,7 @@ fn custom_rank_bool(
 }
 
 fn custom_rank_i64(settings: &Value, category: &str, key: &str, field: &str, default: i64) -> i64 {
-    settings
-        .get("custom_ranks")
-        .and_then(Value::as_object)
-        .and_then(|obj| obj.get(category))
-        .and_then(Value::as_object)
-        .and_then(|obj| obj.get(key))
+    custom_rank_entry(settings, category, key)
         .and_then(Value::as_object)
         .and_then(|obj| obj.get(field))
         .and_then(Value::as_i64)
@@ -715,7 +772,7 @@ fn language_handler_prepared(
     required: &HashSet<String>,
     allowed: &HashSet<String>,
 ) -> bool {
-    let langs = map_array(data, "languages");
+    let langs = map_array(data, "audio_languages");
 
     if langs.is_empty() {
         if settings_option_bool(settings, "remove_unknown_languages", false) {
@@ -733,7 +790,7 @@ fn language_handler_prepared(
         && !langs
             .iter()
             .filter_map(Value::as_str)
-            .any(|lang| required.contains(lang))
+            .any(|lang| matches_languages(lang, required))
     {
         failed_keys.insert("missing_required_language".to_string());
         return true;
@@ -742,7 +799,7 @@ fn language_handler_prepared(
     if langs
         .iter()
         .filter_map(Value::as_str)
-        .any(|lang| lang == "en")
+        .any(|lang| language_matches(lang, "en"))
         && settings_option_bool(settings, "allow_english_in_languages", false)
     {
         return false;
@@ -752,14 +809,14 @@ fn language_handler_prepared(
         && langs
             .iter()
             .filter_map(Value::as_str)
-            .any(|lang| allowed.contains(lang))
+            .any(|lang| matches_languages(lang, allowed))
     {
         return false;
     }
 
     let mut excluded = false;
     for lang in langs.iter().filter_map(Value::as_str) {
-        if exclude.contains(lang) {
+        if matches_languages(lang, exclude) {
             failed_keys.insert(format!("lang_{lang}"));
             excluded = true;
         }
@@ -986,7 +1043,15 @@ fn rank_or_custom(
     if use_custom {
         custom_rank_i64(settings, category, key, "rank", 0)
     } else {
-        rank_model_value(rank_model, fallback_field)
+        let fallback = match fallback_field {
+            "dts_hd" => "dts_lossy",
+            "dts_x" => "dts_lossless",
+            _ => fallback_field,
+        };
+        rank_model
+            .get(fallback_field)
+            .and_then(Value::as_i64)
+            .unwrap_or_else(|| rank_model_value(rank_model, fallback))
     }
 }
 
@@ -1028,10 +1093,10 @@ fn calculate_preferred_langs_prepared(
     if preferred.is_empty() {
         return 0;
     }
-    if map_array(data, "languages")
+    if map_array(data, "audio_languages")
         .iter()
         .filter_map(Value::as_str)
-        .any(|lang| preferred.contains(lang))
+        .any(|lang| matches_languages(lang, preferred))
     {
         10_000
     } else {
@@ -1116,6 +1181,9 @@ pub fn calculate_channels_rank(
             "5.1" | "7.1" => rank_or_custom(rank_model, settings, "audio", "surround", "surround"),
             "stereo" | "2.0" => rank_or_custom(rank_model, settings, "audio", "stereo", "stereo"),
             "mono" => rank_or_custom(rank_model, settings, "audio", "mono", "mono"),
+            value if is_height_layout(value) => {
+                rank_or_custom(rank_model, settings, "audio", "surround", "surround")
+            }
             _ => 0,
         };
     }
@@ -1127,14 +1195,6 @@ pub fn calculate_extra_ranks(
     settings: &Value,
     rank_model: &Value,
 ) -> i64 {
-    let has_core = data.get("bit_depth").and_then(Value::as_str).is_some()
-        || !map_array(data, "hdr").is_empty()
-        || !map_array(data, "seasons").is_empty()
-        || !map_array(data, "episodes").is_empty();
-    if !has_core {
-        return 0;
-    }
-
     let mut total = 0;
     for (attr, category, key) in EXTRA_RULES {
         if value_is_active(data.get(attr)) {

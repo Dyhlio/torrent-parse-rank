@@ -187,7 +187,7 @@ def translate_langs(langs: list[str]) -> list[str]:
 
 class Parser:
     """
-    API-compatible parser wrapper.
+    Native parser with after-default Python handlers.
 
     Core parsing runs in Rust through `ptt_parse_title`.
     """
@@ -285,8 +285,8 @@ class Parser:
 
         result.setdefault("episodes", [])
         result.setdefault("seasons", [])
-        result.setdefault("languages", [])
-        if translate_languages and result["languages"]:
-            result["languages"] = ptt_translate_langs(result["languages"])
+        for field in ("audio_languages", "subtitle_languages"):
+            if translate_languages and field in result:
+                result[field] = ptt_translate_langs(result[field])
         result["title"] = ptt_clean_title(working_title[:end_of_title])
         return result

@@ -78,9 +78,11 @@ class ParsedData(BaseModel):
     episodes: list[int] = Field(default_factory=list)
     complete: bool = False
     volumes: list[int] = Field(default_factory=list)
-    languages: list[str] = Field(default_factory=list)
+    audio_languages: list[str] = Field(default_factory=list)
+    subtitle_languages: list[str] = Field(default_factory=list)
     quality: str | None = None
     hdr: list[str] = Field(default_factory=list)
+    dolby_vision_profiles: list[str] = Field(default_factory=list)
     codec: str | None = None
     audio: list[str] = Field(default_factory=list)
     channels: list[str] = Field(default_factory=list)
@@ -97,7 +99,7 @@ class ParsedData(BaseModel):
     hardcoded: bool = False
     region: str | None = None
     ppv: bool = False
-    three_d: bool = Field(default=False, alias="_3d")
+    three_d: bool = Field(default=False, alias="3d")
     site: str | None = None
     size: str | None = None
     proper: bool = False
@@ -131,11 +133,6 @@ class ParsedData(BaseModel):
         if type(value) is not str or not value:
             raise ValueError("raw_title must be a non-empty string")
         return value
-
-    @property
-    def _3d(self) -> bool:
-        """Expose the canonical JSON `_3d` value as a Python attribute."""
-        return self.three_d
 
     @property
     def type(self) -> str:
@@ -314,6 +311,8 @@ class BaseRankingModel(BaseModel):
     dolby_digital_plus: int = 0
     dts_lossy: int = 0
     dts_lossless: int = 0
+    dts_hd: int | None = None
+    dts_x: int | None = None
     # opus: int = 0
     # pcm: int = 0
     flac: int = 0
@@ -603,6 +602,8 @@ class AudioRankModel(ConfigModelBase):
     dolby_digital_plus: CustomRank = _rank_field()
     dts_lossy: CustomRank = _rank_field()
     dts_lossless: CustomRank = _rank_field()
+    dts_hd: CustomRank | None = None
+    dts_x: CustomRank | None = None
     # opus: CustomRank = _rank_field()
     # pcm: CustomRank = _rank_field()
     flac: CustomRank = _rank_field()
@@ -753,22 +754,9 @@ class SettingsModel(BaseModel):
     ) -> list[Any]:
         """Convert regex patterns to strings for JSON serialization."""
         if info.context and info.context.get("native_pattern_objects"):
-            native_values = []
-            for value in values:
-                if value is None:
-                    native_values.append(None)
-                elif isinstance(value, regex.Pattern):
-                    native_values.append(
-                        {
-                            "pattern": value.pattern,
-                            "ignore_case": bool(value.flags & regex.IGNORECASE),
-                        }
-                    )
-                elif isinstance(value, str):
-                    native_values.append({"pattern": value, "ignore_case": True})
-                else:
-                    raise TypeError(f"Unsupported pattern item type: {type(value)}")
-            return native_values
+            from ._native_bridge import _serialize_pattern_item
+
+            return [_serialize_pattern_item(value) for value in values]
         return [v.pattern if isinstance(v, regex.Pattern) else v for v in values]
 
     def __getitem__(self, item: str) -> CustomRankDict:

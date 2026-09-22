@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import orjson
@@ -462,12 +463,14 @@ def test_native_json_boundaries_require_current_object_roots_and_titles():
 def test_parsed_data_uses_one_strict_current_schema():
     parsed = rtn_parse("Movie.2026.3D.1080p.WEB-DL")
 
-    assert parsed._3d is True
-    assert parsed.model_dump(mode="json", by_alias=True)["_3d"] is True
-    assert parsed.model_dump(mode="json")["_3d"] is True
+    assert parsed.three_d is True
+    assert parsed.model_dump(mode="json", by_alias=True)["3d"] is True
+    assert parsed.model_dump(mode="json")["3d"] is True
     assert ParsedData.model_validate(parsed.model_dump()) == parsed
-    assert rtn_parse("Movie.2026.3D", json=True)["_3d"] is True
-    assert ParsedData.model_validate({"raw_title": "Movie.2026.3D", "three_d": True})._3d is True
+    assert rtn_parse("Movie.2026.3D", json=True)["3d"] is True
+    assert (
+        ParsedData.model_validate({"raw_title": "Movie.2026.3D", "three_d": True}).three_d is True
+    )
 
     malformed = [
         {"raw_title": "Movie.2026", "title": "legacy intermediate"},
@@ -587,7 +590,8 @@ def test_settings_save_is_atomic_and_preserves_existing_file_on_failure(
         SettingsModel(name="updated").save(path)
 
     assert path.read_text(encoding="utf-8") == "original"
-    assert path.stat().st_mode & 0o777 == 0o640
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o640
     assert list(tmp_path.glob(".settings.json.*.tmp")) == []
 
 

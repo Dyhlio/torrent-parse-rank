@@ -7,8 +7,8 @@ OUT_DIR="${UPSTREAM_TEST_OUT_DIR:-${ROOT_DIR}/parity_tests/upstream}"
 
 PTT_UPSTREAM_URL="${PTT_UPSTREAM_URL:-https://github.com/dreulavelle/PTT.git}"
 RTN_UPSTREAM_URL="${RTN_UPSTREAM_URL:-https://github.com/dreulavelle/rank-torrent-name.git}"
-PTT_UPSTREAM_BRANCH="${PTT_UPSTREAM_BRANCH:-main}"
-RTN_UPSTREAM_BRANCH="${RTN_UPSTREAM_BRANCH:-main}"
+PTT_UPSTREAM_BRANCH="${PTT_UPSTREAM_BRANCH:-88429bb90acef55673f421f45038878809b1e577}"
+RTN_UPSTREAM_BRANCH="${RTN_UPSTREAM_BRANCH:-bdb9973109eb489be831af0c39bdf9c27e3378ed}"
 
 fetch_repo() {
   local name="$1"
@@ -18,9 +18,11 @@ fetch_repo() {
 
   if [[ -d "${repo_dir}/.git" ]]; then
     git -C "${repo_dir}" fetch --depth 1 origin "${branch}"
-    git -C "${repo_dir}" checkout -B "${branch}" "origin/${branch}"
+    git -C "${repo_dir}" checkout --detach FETCH_HEAD
   else
-    git clone --depth 1 --branch "${branch}" "${url}" "${repo_dir}"
+    git clone --no-checkout "${url}" "${repo_dir}"
+    git -C "${repo_dir}" fetch --depth 1 origin "${branch}"
+    git -C "${repo_dir}" checkout --detach FETCH_HEAD
   fi
 }
 

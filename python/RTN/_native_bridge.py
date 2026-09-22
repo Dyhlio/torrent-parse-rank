@@ -14,8 +14,25 @@ def _serialize_pattern_item(item: Any) -> dict[str, Any] | None:
     if item is None:
         return None
     if isinstance(item, regex.Pattern):
+        supported = (
+            regex.IGNORECASE
+            | regex.MULTILINE
+            | regex.DOTALL
+            | regex.VERBOSE
+            | regex.UNICODE
+            | regex.VERSION0
+        )
+        if item.flags & ~supported:
+            raise ValueError("Unsupported regular expression flags for native preferences.")
+        modifiers = "".join(
+            letter
+            for flag, letter in ((regex.MULTILINE, "m"), (regex.DOTALL, "s"), (regex.VERBOSE, "x"))
+            if item.flags & flag
+        )
+        pattern = item.pattern + ("\n" if item.flags & regex.VERBOSE else "")
+        pattern = f"(?{modifiers}:{pattern})" if modifiers else pattern
         return {
-            "pattern": item.pattern,
+            "pattern": pattern,
             "ignore_case": bool(item.flags & regex.IGNORECASE),
         }
     if isinstance(item, str):

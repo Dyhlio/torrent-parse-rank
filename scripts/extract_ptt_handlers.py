@@ -9,7 +9,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_HANDLERS_FILE = ROOT / ".upstream-tests-cache" / "PTT" / "PTT" / "handlers.py"
-DEFAULT_OUT_FILE = ROOT / "crates" / "ptt-core" / "src" / "generated" / "handlers.json"
+DEFAULT_OUT_FILE = ROOT / ".upstream-tests-cache" / "handlers.json"
 
 
 def lower_pattern_for_pcre2(pattern: str) -> str:

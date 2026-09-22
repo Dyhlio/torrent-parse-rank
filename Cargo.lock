@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "ptt-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aho-corasick",
  "chrono",
@@ -600,14 +600,13 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "rtn-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "fancy-regex",
  "ptt-core",
  "serde",
  "serde_json",
- "strsim",
  "thiserror",
  "unicode-normalization",
 ]
@@ -677,12 +676,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
-name = "strsim"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
-
-[[package]]
 name = "syn"
 version = "2.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -746,7 +739,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "torrent_parse_rank_native"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ptt-core",
  "pyo3",

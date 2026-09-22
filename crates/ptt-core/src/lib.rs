@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use thiserror::Error;
 
+mod metadata;
 mod prefilter;
 
 use prefilter::{Gate, Hits, Prefilter};
@@ -227,9 +228,9 @@ fn parse_date_formats(expr: &str) -> Option<Vec<String>> {
     Some(vec![fmt])
 }
 
-fn parse_transform(expr: &str) -> TransformSpec {
+fn parse_transform(expr: &str) -> Result<TransformSpec, ParseError> {
     let expr = expr.trim();
-    match expr {
+    Ok(match expr {
         "none" => TransformSpec::None,
         "integer" => TransformSpec::Integer,
         "first_integer" => TransformSpec::FirstInteger,
@@ -242,17 +243,17 @@ fn parse_transform(expr: &str) -> TransformSpec {
         "transform_resolution" => TransformSpec::TransformResolution,
         _ => {
             if let Some(v) = parse_quoted_arg(expr, "value(", ")") {
-                return TransformSpec::Value(v);
+                return Ok(TransformSpec::Value(v));
             }
             if let Some(v) = parse_quoted_arg(expr, "uniq_concat(value(", "))") {
-                return TransformSpec::UniqConcatValue(v);
+                return Ok(TransformSpec::UniqConcatValue(v));
             }
             if let Some(v) = parse_date_formats(expr) {
-                return TransformSpec::Date(v);
+                return Ok(TransformSpec::Date(v));
             }
-            TransformSpec::None
+            return Err(ParseError::Data(format!("unknown transform: {expr}")));
         }
-    }
+    })
 }
 
 impl ParserEngine {
@@ -284,7 +285,7 @@ impl ParserEngine {
             let transform = if is_hdr_format {
                 TransformSpec::HdrFormat
             } else {
-                parse_transform(&raw.transform)
+                parse_transform(&raw.transform)?
             };
             let kind = match raw.kind.as_str() {
                 "regex" => {
@@ -296,10 +297,32 @@ impl ParserEngine {
                     gate_specs.push(prefilter::derive(&normalized));
                     RuntimeHandlerKind::Regex(compile_regex(&pat, ignore_case)?)
                 }
-                _ => {
+                "function" => {
                     let function = raw.function.unwrap_or_default();
+                    if !matches!(
+                        function.as_str(),
+                        "is_adult_content"
+                            | "handle_bit_depth"
+                            | "handle_space_in_codec"
+                            | "handle_volumes"
+                            | "handle_episodes"
+                            | "handle_anime_eps"
+                            | "infer_language_based_on_naming"
+                            | "handle_group"
+                            | "handle_group_exclusion"
+                    ) {
+                        return Err(ParseError::Data(format!(
+                            "unknown handler function: {function}"
+                        )));
+                    }
                     gate_specs.push(Vec::new());
                     RuntimeHandlerKind::Function(function)
+                }
+                _ => {
+                    return Err(ParseError::Data(format!(
+                        "unknown handler kind: {}",
+                        raw.kind
+                    )));
                 }
             };
             handlers.push(RuntimeHandler {
@@ -343,6 +366,9 @@ impl ParserEngine {
         translate_languages: bool,
     ) -> Result<ParseContext, ParseError> {
         let mut title = normalize_underscores(raw_title);
+        let original_title = title.clone();
+        let mut positions: Vec<usize> = (0..title.len()).collect();
+        let mut records = Vec::new();
         let mut result = Map::new();
         let mut matched: HashMap<String, MatchInfo> = HashMap::new();
         let mut end_of_title = title.len();
@@ -359,10 +385,14 @@ impl ParserEngine {
                 RuntimeHandlerKind::Regex(re) => self.apply_regex_handler(
                     handler,
                     re,
-                    &title,
-                    end_of_title,
-                    &mut result,
-                    &mut matched,
+                    HandlerContext {
+                        title: &title,
+                        end_of_title,
+                        result: &mut result,
+                        matched: &mut matched,
+                        records: &mut records,
+                        positions: &positions,
+                    },
                 )?,
                 RuntimeHandlerKind::Function(func_name) => self.apply_function_handler(
                     handler,
@@ -382,6 +412,7 @@ impl ParserEngine {
                 let end = (match_result.match_index + match_result.match_len).min(title.len());
                 if start <= end && title.is_char_boundary(start) && title.is_char_boundary(end) {
                     title.replace_range(start..end, "");
+                    positions.drain(start..end);
                     if PREFILTER {
                         self.prefilter.scan(&title, &mut hits);
                     }
@@ -413,23 +444,30 @@ impl ParserEngine {
 
         post_process_result(raw_title, &mut result)?;
 
-        if translate_languages && let Some(Value::Array(langs)) = result.get_mut("languages") {
-            let mut translated = Vec::with_capacity(langs.len());
-            for lang in langs.iter().filter_map(|v| v.as_str()) {
-                if let Some(name) = LANGUAGES_TRANSLATION_TABLE.get(lang) {
-                    translated.push(Value::String((*name).to_owned()));
-                }
-            }
-            *langs = translated;
-        }
-
         let end_of_title = end_of_title.min(title.len());
+        let end_of_title = if title.is_char_boundary(end_of_title) {
+            end_of_title
+        } else {
+            title.len()
+        };
+        let original_end = if end_of_title == 0 {
+            0
+        } else {
+            positions
+                .get(end_of_title - 1)
+                .map_or(0, |position| position + 1)
+        };
+        metadata::Details::new(&original_title, &records, original_end)
+            .apply(&mut result, translate_languages)?;
         let title_slice = if title.is_char_boundary(end_of_title) {
             &title[..end_of_title]
         } else {
             &title
         };
         result.insert("title".to_owned(), Value::String(clean_title(title_slice)));
+        if let Some(info) = matched.remove("languages") {
+            matched.insert("audio_languages".to_owned(), info);
+        }
         Ok(ParseContext {
             result,
             working_title: title,
@@ -442,11 +480,16 @@ impl ParserEngine {
         &self,
         handler: &RuntimeHandler,
         regex: &PcreRegex,
-        title: &str,
-        end_of_title: usize,
-        result: &mut Map<String, Value>,
-        matched: &mut HashMap<String, MatchInfo>,
+        context: HandlerContext<'_>,
     ) -> Result<Option<HandlerMatch>, ParseError> {
+        let HandlerContext {
+            title,
+            end_of_title,
+            result,
+            matched,
+            records,
+            positions,
+        } = context;
         if result.contains_key(&handler.name) && handler.options.skip_if_already_found {
             return Ok(None);
         }
@@ -459,9 +502,25 @@ impl ParserEngine {
         {
             return Ok(None);
         }
-        let captures = regex
-            .captures(title.as_bytes())
-            .map_err(|e| ParseError::Regex(e.to_string()))?;
+        let captures = if handler.name == "country" {
+            let details = metadata::Details::new(title, &[], 0);
+            let mut selected = None;
+            for captures in regex.captures_iter(title.as_bytes()) {
+                let captures = captures.map_err(|e| ParseError::Regex(e.to_string()))?;
+                if let Some(m) = captures.get(0)
+                    && details.is_labelled_language_region((m.start(), m.end()))?
+                {
+                    continue;
+                }
+                selected = Some(captures);
+                break;
+            }
+            selected
+        } else {
+            regex
+                .captures(title.as_bytes())
+                .map_err(|e| ParseError::Regex(e.to_string()))?
+        };
         let Some(captures) = captures else {
             return Ok(None);
         };
@@ -543,6 +602,11 @@ impl ParserEngine {
             }
         }
         let existing = result.get(&handler.name);
+        if handler.name == "site"
+            && metadata::Details::new(raw_match, &[], 0).has_labelled_languages()
+        {
+            return Ok(None);
+        }
         let transformed = transform_value(&handler.transform, clean_match, existing)?;
         let Some(mut transformed) = transformed else {
             return Ok(None);
@@ -575,6 +639,57 @@ impl ParserEngine {
         }
         let is_skip_if_first =
             handler.options.skip_if_first && has_other_match && all_before_others;
+
+        if matches!(
+            handler.name.as_str(),
+            "languages"
+                | "audio"
+                | "channels"
+                | "hdr"
+                | "quality"
+                | "year"
+                | "resolution"
+                | "seasons"
+                | "episodes"
+                | "group"
+                | "site"
+                | "subbed"
+                | "dubbed"
+        ) {
+            for capture in regex.captures_iter(title.as_bytes()) {
+                let capture = capture.map_err(|e| ParseError::Regex(e.to_string()))?;
+                let whole = capture.get(0).expect("whole capture");
+                if whole.start() == whole.end() {
+                    continue;
+                }
+                if handler.options.skip_if_first
+                    && has_other_match
+                    && matched
+                        .iter()
+                        .filter(|(key, _)| *key != &handler.name)
+                        .all(|(_, m)| whole.start() < m.match_index)
+                {
+                    continue;
+                }
+                let group = capture.get(1).unwrap_or(whole);
+                if let Some(value) =
+                    transform_value(&handler.transform, &title[group.start()..group.end()], None)?
+                {
+                    let values = match value {
+                        Value::Array(values) => values,
+                        value => vec![value],
+                    };
+                    for value in values {
+                        records.push(metadata::Record {
+                            field: handler.name.clone(),
+                            start: positions[whole.start()],
+                            end: positions[whole.end() - 1] + 1,
+                            value,
+                        });
+                    }
+                }
+            }
+        }
 
         if is_skip_if_first {
             return Ok(None);
@@ -985,16 +1100,6 @@ pub fn expand_number_range(input: &str) -> Option<Vec<i64>> {
     Some(numbers)
 }
 
-fn site_tld_lang_code(tld: &str) -> Option<&'static str> {
-    match tld {
-        "nl" => Some("nl"),
-        "fi" => Some("fi"),
-        "se" => Some("sv"),
-        "tel" => Some("te"),
-        _ => None,
-    }
-}
-
 fn post_process_result(raw_title: &str, result: &mut Map<String, Value>) -> Result<(), ParseError> {
     if let Some(Value::String(q)) = result.get("quality")
         && q == "REMUX"
@@ -1015,80 +1120,6 @@ fn post_process_result(raw_title: &str, result: &mut Map<String, Value>) -> Resu
         result.insert("episodes".to_owned(), Value::Array(vec![]));
     }
 
-    let mut langs: Vec<String> = result
-        .get("languages")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
-    if langs.is_empty() {
-        return Ok(());
-    }
-
-    if let Some(site) = result.get("site").and_then(Value::as_str) {
-        let tld_raw = site
-            .rsplit(['.', ' '])
-            .next()
-            .unwrap_or_default()
-            .to_lowercase();
-        let tld: String = tld_raw
-            .chars()
-            .filter(|c| c.is_ascii_alphabetic())
-            .collect();
-        if let Some(code) = site_tld_lang_code(&tld) {
-            langs.retain(|l| l != code);
-        }
-    }
-
-    // If `site` is not extracted, domain TLDs can still produce false language positives.
-    for cap in RAW_SITE_TLD_RE
-        .captures_iter(raw_title)
-        .filter_map(Result::ok)
-    {
-        let Some(m) = cap.get(1) else { continue };
-        let tld = m.as_str().to_lowercase();
-        if let Some(code) = site_tld_lang_code(&tld) {
-            langs.retain(|l| l != code);
-        }
-    }
-
-    if langs.iter().any(|l| l == "de") {
-        let has_de_hint = GERMAN_HINT_RE
-            .is_match(raw_title)
-            .map_err(|e| ParseError::Regex(e.to_string()))?;
-        let has_de_code = DE_CODE_RE
-            .is_match(raw_title)
-            .map_err(|e| ParseError::Regex(e.to_string()))?;
-        let code_count = UPPER_LANG_CODE_RE
-            .find_iter(raw_title)
-            .filter_map(Result::ok)
-            .count();
-        let keep_from_code_list = has_de_code && code_count >= 3;
-        if !has_de_hint && !keep_from_code_list {
-            langs.retain(|l| l != "de");
-        }
-    }
-
-    if SCI_FI_RE
-        .is_match(raw_title)
-        .map_err(|e| ParseError::Regex(e.to_string()))?
-    {
-        langs.retain(|l| l != "fi");
-    }
-
-    // preserve insertion order while deduping
-    let mut seen = HashSet::new();
-    let mut deduped = Vec::new();
-    for lang in langs {
-        if seen.insert(lang.clone()) {
-            deduped.push(Value::String(lang));
-        }
-    }
-    result.insert("languages".to_owned(), Value::Array(deduped));
     Ok(())
 }
 
@@ -1631,7 +1662,8 @@ pub fn translate_langs_codes(langs: &[String]) -> Vec<String> {
         .filter_map(|lang| {
             LANGUAGES_TRANSLATION_TABLE
                 .get(lang.as_str())
-                .map(|value| (*value).to_owned())
+                .map(|name| (*name).to_owned())
+                .or_else(|| metadata::language_name(lang))
         })
         .collect()
 }
@@ -1641,6 +1673,15 @@ pub fn languages_translation_table() -> Vec<(String, String)> {
         .iter()
         .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
         .collect()
+}
+
+struct HandlerContext<'a> {
+    title: &'a str,
+    end_of_title: usize,
+    result: &'a mut Map<String, Value>,
+    matched: &'a mut HashMap<String, MatchInfo>,
+    records: &'a mut Vec<metadata::Record>,
+    positions: &'a [usize],
 }
 
 static HANDLERS_JSON: &str = include_str!("generated/handlers.json");
@@ -1717,18 +1758,6 @@ static BLURAY_HINT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)\bblu[ .-]*ray\b").expect("valid regex"));
 static MOVIE_EP_PREFIX_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)\b(?:movie|film)\s*-\s*\d+\s*-").expect("valid regex"));
-static SCI_FI_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)\bsci[ .-]?fi\b").expect("valid regex"));
-static GERMAN_HINT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\b(?:GER|DEU|german|alem[aã]o|deutsch)\b|(?<=\.)de(?=\.)")
-        .expect("valid regex")
-});
-static RAW_SITE_TLD_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)\bwww\.[a-z0-9_-]+\.(nl|fi|se|tel)\b").expect("valid regex"));
-static DE_CODE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bDE\b").expect("valid regex"));
-static UPPER_LANG_CODE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\b[A-Z]{2,3}\b").expect("valid regex"));
-
 const MONTH_MAPPING: &[(&str, &str)] = &[
     (r"\bJanu\b", "Jan"),
     (r"\bFebr\b", "Feb"),
@@ -1842,6 +1871,12 @@ mod tests {
         "Show.S02E04.2024.06.12.GERMAN.DL.2160p.WEB.H265.DV.HDR.DDP5.1",
         "Title.2024.1080p.BluRay.REMUX.DTS-HD.MA.7.1.TrueHD.Atmos.10bit",
         "Title S01E01-E08 COMPLETE MULTi DUBBED SUBBED 1080p NF WEB-DL",
+        "Example.2024.VOF.JAPANESE.VOSTFR.DTS-HD.MA.7.1.4.DV.Profile.8.1",
+        "[French.(SDH)] Example.S02E03.1080p.JAPANESE",
+        "[fr-CA [SDH]] Dune.2021.1080p.JAPANESE",
+        "[fr-CA [SDH]] The.Office.US.S01E01.1080p.JAPANESE",
+        "[en-US [SDH]] The.Office.UK.S01E01.1080p.JAPANESE",
+        "WEB-DL[.mkv]K[trailer WEB-DL/WEB-DL 日本語. -",
         "Wonder.Woman.1984.2020.3D.1080p.BluRay.x264-SURCODE[rarbg]",
         "Movie.vietnamese.1080p.WEB-DL",
         "Movie.norwegian.1080p.BluRay",
@@ -1886,6 +1921,14 @@ mod tests {
             "XXX",
             "[Group]",
             "Мстители",
+            "VFQ",
+            "VFF",
+            "VOF",
+            "Multi-Subs",
+            "[Audio Japanese]",
+            "[Subs fr-CA]",
+            "7.1.4",
+            "HE-AACv2",
             "日本語",
             "remaſtered",
             "K",
@@ -1897,7 +1940,7 @@ mod tests {
         ];
         let separators = [".", " ", "-", "_", "/", "[", "]"];
         let mut state = 0x9e37_79b9_u32;
-        for _ in 0..256 {
+        for _ in 0..4096 {
             let mut title = String::new();
             for _ in 0..2 + state as usize % 7 {
                 state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
@@ -1961,10 +2004,22 @@ mod tests {
             .iter()
             .filter(|handler| handler.gate.is_active())
             .count();
-        assert_eq!(regex_handlers, 423);
+        assert_eq!(regex_handlers, 424);
         assert!(
             gated_handlers >= 300,
             "only {gated_handlers} of {regex_handlers} regex handlers are gated"
         );
+    }
+
+    #[test]
+    fn unsupported_rules_are_rejected() {
+        for (kind, transform, function) in [
+            ("regex", "unknown", ""),
+            ("function", "none", "unknown"),
+            ("unknown", "none", ""),
+        ] {
+            let rules = json!({"handlers": [{"name": "test", "kind": kind, "pattern": "test", "transform": transform, "function": function, "options": {}}]});
+            assert!(ParserEngine::from_json(&rules.to_string()).is_err());
+        }
     }
 }
