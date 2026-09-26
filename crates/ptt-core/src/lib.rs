@@ -263,8 +263,6 @@ impl ParserEngine {
         let mut handlers = Vec::with_capacity(table.handlers.len());
         let mut gate_specs = Vec::with_capacity(table.handlers.len());
         for mut raw in table.handlers {
-            // Keep the generated upstream snapshot intact; these are deliberate
-            // parser corrections applied before compiling both regexes and gates.
             let guard = match (raw.name.as_str(), raw.pattern.as_deref()) {
                 ("hdr", _) | ("bit_depth", Some(r"\bhdr10\b" | r"\bhi10\b")) => {
                     MatchGuard::AmbiguousMetadata
