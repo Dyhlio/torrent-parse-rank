@@ -577,7 +577,7 @@ impl Details<'_> {
         let mut explicit = Vec::new();
         for (start, end, marker) in spans(
             re!(
-                r"\b(VFQ|VFF|TRUEFRENCH|SUBFRENCH|FRENCH|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
+                r"\b(VF2|VFQ|VFF|TRUEFRENCH|SUBFRENCH|FRENCH|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
             ),
             self.title,
         )? {
@@ -594,6 +594,11 @@ impl Details<'_> {
                         .iter()
                         .any(|&(left, right)| left < start && right == self.title.len()))
             {
+                continue;
+            }
+            if marker == "VF2" {
+                explicit.push((start, end, "fr-FR".to_owned()));
+                explicit.push((start, end, "fr-CA".to_owned()));
                 continue;
             }
             let code = match marker.as_str() {

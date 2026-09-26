@@ -7109,7 +7109,8 @@
         "year": 2014,
         "audio_languages": [
           "multi",
-          "fr-FR"
+          "fr-FR",
+          "fr-CA"
         ],
         "subtitle_languages": []
       }
@@ -17942,7 +17943,8 @@
         "year": 2022,
         "audio_languages": [
           "multi",
-          "fr-FR"
+          "fr-FR",
+          "fr-CA"
         ],
         "subtitle_languages": [],
         "extended": true

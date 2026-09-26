@@ -111,6 +111,13 @@ def test_real_dual_audio_tags_are_still_recognized(raw):
     assert parse_title(raw)["dubbed"] is True
 
 
+@pytest.mark.parametrize("marker", ["VF2", "vf2"])
+def test_vf2_identifies_both_french_dubs(marker):
+    raw = f"Aurora.2024.{marker}.1080p.WEB-DL.x264.mkv"
+    assert parse_title(raw)["audio_languages"] == ["fr-FR", "fr-CA"]
+    assert parse(raw).audio_languages == ["fr-FR", "fr-CA"]
+
+
 def test_explicit_site_prefix_is_still_removed():
     parsed = parse_title("www.example.com - Aurora.2024.1080p.WEB-DL.x264.mkv")
     assert parsed["title"] == "Aurora"
