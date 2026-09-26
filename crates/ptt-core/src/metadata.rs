@@ -351,7 +351,7 @@ impl<'a> Details<'a> {
         }
         let text = &self.title[span.0..span.1];
         let audio_marker = full(
-            re!(r"VOF|VF[FQIB2]?|TRUEFRENCH|MULTI(?:PLE)?(?:[ .-]*AUDIO)?"),
+            re!(r"VO[QF]|VQ|VF[FQIB2]?|TRUEFRENCH|MULTI(?:PLE)?(?:[ .-]*AUDIO)?"),
             text,
         );
         if full(re!(r"MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB"), text) {
@@ -577,7 +577,7 @@ impl Details<'_> {
         let mut explicit = Vec::new();
         for (start, end, marker) in spans(
             re!(
-                r"\b(VF2|VFQ|VFF|TRUEFRENCH|SUBFRENCH|FRENCH|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
+                r"\b(VF2|VFQ|VFF|VFB|VOQ|VQ|TRUEFRENCH|SUBFRENCH|FRENCH|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
             ),
             self.title,
         )? {
@@ -602,7 +602,8 @@ impl Details<'_> {
                 continue;
             }
             let code = match marker.as_str() {
-                "VFQ" => "fr-CA",
+                "VFQ" | "VOQ" | "VQ" => "fr-CA",
+                "VFB" => "fr-BE",
                 "VFF" | "TRUEFRENCH" => "fr-FR",
                 "VOSTFR" | "SUBFRENCH" | "FRENCH" => "fr",
                 "VOSTA" | "ENGSUB" | "ESUB" | "ESUBS" => "en",

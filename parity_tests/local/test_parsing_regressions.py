@@ -118,6 +118,23 @@ def test_vf2_identifies_both_french_dubs(marker):
     assert parse(raw).audio_languages == ["fr-FR", "fr-CA"]
 
 
+@pytest.mark.parametrize(
+    ("marker", "expected"),
+    [("VFB", "fr-BE"), ("vfb", "fr-BE"), ("VOQ", "fr-CA"), ("voq", "fr-CA"), ("VQ", "fr-CA")],
+)
+def test_explicit_belgian_and_quebec_french_versions(marker, expected):
+    raw = f"Aurora.2024.{marker}.1080p.WEB-DL.x264.mkv"
+    assert parse_title(raw)["audio_languages"] == [expected]
+    assert parse(raw).audio_languages == [expected]
+
+
+@pytest.mark.parametrize("title", ["The VQ Project", "A VOQ Story"])
+def test_french_version_markers_in_a_title_are_not_audio(title):
+    raw = f"{title}.2024.1080p.WEB-DL.x264.mkv"
+    assert parse_title(raw)["audio_languages"] == []
+    assert parse(raw).audio_languages == []
+
+
 def test_explicit_site_prefix_is_still_removed():
     parsed = parse_title("www.example.com - Aurora.2024.1080p.WEB-DL.x264.mkv")
     assert parsed["title"] == "Aurora"
