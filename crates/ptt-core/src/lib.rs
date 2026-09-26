@@ -266,7 +266,9 @@ impl ParserEngine {
             // Keep the generated upstream snapshot intact; these are deliberate
             // parser corrections applied before compiling both regexes and gates.
             let guard = match (raw.name.as_str(), raw.pattern.as_deref()) {
-                ("hdr", _) | ("bit_depth", Some(r"\bhdr10\b")) => MatchGuard::AmbiguousMetadata,
+                ("hdr", _) | ("bit_depth", Some(r"\bhdr10\b" | r"\bhi10\b")) => {
+                    MatchGuard::AmbiguousMetadata
+                }
                 ("dubbed", Some(r"\bdual\b(?![ .-]*sub)")) => MatchGuard::AmbiguousMetadata,
                 ("site", Some(pattern)) if pattern.contains("com|org|net") => {
                     MatchGuard::SitePrefix
@@ -280,6 +282,9 @@ impl ParserEngine {
                 raw.name == "hdr" && raw.pattern.as_deref() == Some(r"\bHDR(?:10)?\b");
             if is_hdr_format {
                 raw.pattern = Some(r"\b(?:HDR(?:10)?|HLG)\b".to_owned());
+            }
+            if raw.name == "bit_depth" && raw.pattern.as_deref() == Some(r"\bhi10\b") {
+                raw.pattern = Some(r"\bhi10p?\b".to_owned());
             }
             let options: HandlerOptions = raw.options.into();
             let transform = if is_hdr_format {

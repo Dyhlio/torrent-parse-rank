@@ -351,7 +351,7 @@ impl<'a> Details<'a> {
         }
         let text = &self.title[span.0..span.1];
         let audio_marker = full(
-            re!(r"VO[QF]|VQ|VF[FQIB2]?|TRUEFRENCH|MULTI(?:PLE)?(?:[ .-]*AUDIO)?"),
+            re!(r"VO[QF]|VQ|VF[FQIB2]?|FR2|TRUEFRENCH|MULTI(?:PLE)?(?:[ .-]*AUDIO)?"),
             text,
         );
         if full(re!(r"MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB"), text) {
@@ -577,7 +577,7 @@ impl Details<'_> {
         let mut explicit = Vec::new();
         for (start, end, marker) in spans(
             re!(
-                r"\b(VF2|VFQ|VFF|VFB|VOQ|VQ|TRUEFRENCH|SUBFRENCH|FRENCH|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
+                r"\b(VF2|FR2|VFQ|VFF|VFB|VOQ|VQ|TRUEFRENCH|SUBFRENCH|FRENCH|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
             ),
             self.title,
         )? {
@@ -596,7 +596,7 @@ impl Details<'_> {
             {
                 continue;
             }
-            if marker == "VF2" {
+            if marker == "VF2" || marker == "FR2" {
                 explicit.push((start, end, "fr-FR".to_owned()));
                 explicit.push((start, end, "fr-CA".to_owned()));
                 continue;

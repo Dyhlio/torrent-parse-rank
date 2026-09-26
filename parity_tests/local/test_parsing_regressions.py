@@ -111,11 +111,24 @@ def test_real_dual_audio_tags_are_still_recognized(raw):
     assert parse_title(raw)["dubbed"] is True
 
 
-@pytest.mark.parametrize("marker", ["VF2", "vf2"])
+@pytest.mark.parametrize("marker", ["VF2", "vf2", "FR2", "fr2"])
 def test_vf2_identifies_both_french_dubs(marker):
     raw = f"Aurora.2024.{marker}.1080p.WEB-DL.x264.mkv"
     assert parse_title(raw)["audio_languages"] == ["fr-FR", "fr-CA"]
     assert parse(raw).audio_languages == ["fr-FR", "fr-CA"]
+
+
+@pytest.mark.parametrize("marker", ["Hi10P", "hi10p", "Hi10", "10bit"])
+def test_explicit_ten_bit_markers_share_bit_depth(marker):
+    raw = f"Aurora.2024.1080p.WEB-DL.{marker}.x264.mkv"
+    assert parse_title(raw)["bit_depth"] == "10bit"
+    assert parse(raw).bit_depth == "10bit"
+
+
+def test_hi10p_in_the_title_is_not_bit_depth():
+    raw = "Hi10P.Adventures.2024.1080p.WEB-DL.x264.mkv"
+    assert parse_title(raw).get("bit_depth") is None
+    assert parse(raw).bit_depth is None
 
 
 @pytest.mark.parametrize(
@@ -128,7 +141,7 @@ def test_explicit_belgian_and_quebec_french_versions(marker, expected):
     assert parse(raw).audio_languages == [expected]
 
 
-@pytest.mark.parametrize("title", ["The VQ Project", "A VOQ Story"])
+@pytest.mark.parametrize("title", ["The VQ Project", "A VOQ Story", "The FR2 Project"])
 def test_french_version_markers_in_a_title_are_not_audio(title):
     raw = f"{title}.2024.1080p.WEB-DL.x264.mkv"
     assert parse_title(raw)["audio_languages"] == []
