@@ -577,7 +577,7 @@ impl Details<'_> {
         let mut explicit = Vec::new();
         for (start, end, marker) in spans(
             re!(
-                r"\b(VF2|FR2|VFQ|VFF|VFB|VOQ|VQ|TRUEFRENCH|SUBFRENCH|FRENCH|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
+                r"\b(VF2|FR2|VFQ|VFF|VFB|VOQ|VQ|TRUEFRENCH|SUBFRENCH|FRENCH|VOST[.]FR|VOST[.]A|VOSTFR|VOSTA|ENGSUB|ESUBS?|MULTI(?:PLE)?[ .-]*SUB(?:S|TITLES?|BED)?|MSUB|MULTI(?:PLE)?[ .-]*AUDIO|MULTI)\b"
             ),
             self.title,
         )? {
@@ -605,8 +605,8 @@ impl Details<'_> {
                 "VFQ" | "VOQ" | "VQ" => "fr-CA",
                 "VFB" => "fr-BE",
                 "VFF" | "TRUEFRENCH" => "fr-FR",
-                "VOSTFR" | "SUBFRENCH" | "FRENCH" => "fr",
-                "VOSTA" | "ENGSUB" | "ESUB" | "ESUBS" => "en",
+                "VOSTFR" | "VOST.FR" | "SUBFRENCH" | "FRENCH" => "fr",
+                "VOSTA" | "VOST.A" | "ENGSUB" | "ESUB" | "ESUBS" => "en",
                 _ => "multi",
             };
             explicit.push((start, end, code.to_owned()));

@@ -3,6 +3,22 @@ from PTT import parse_title
 
 
 @pytest.mark.parametrize(
+    ("marker", "subtitle"),
+    [("VOSTFR", "fr-FR"), ("VOST.FR", "fr-FR"), ("VOSTA", "en-US"), ("VOST.A", "en-US")],
+)
+@pytest.mark.parametrize(
+    ("audio_marker", "audio"),
+    [("", []), ("JAPANESE.", ["ja-JP"]), ("ENGLISH.", ["en-US"]), ("MULTI.", ["multi"])],
+)
+def test_vost_markers_keep_subtitles_separate_from_declared_audio(
+    marker, subtitle, audio_marker, audio
+):
+    result = parse_title(f"Example.S02E03.{audio_marker}{marker}.1080p.WEB-DL.x264-GRP")
+    assert result["audio_languages"] == audio
+    assert result["subtitle_languages"] == [subtitle]
+
+
+@pytest.mark.parametrize(
     "marker,language",
     [
         ("VOF", "fr-FR"),

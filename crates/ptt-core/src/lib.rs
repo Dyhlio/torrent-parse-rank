@@ -1857,6 +1857,24 @@ static ADULT_KEYWORDS: Lazy<AhoCorasick> = Lazy::new(|| {
 mod tests {
     use super::*;
 
+    #[test]
+    fn dotted_vost_markers_do_not_invent_french_audio() {
+        for (marker, subtitle) in [("VOST.FR", "fr-FR"), ("VOST.A", "en-US")] {
+            let title = format!("Example.S02E03.JAPANESE.{marker}.1080p.WEB-DL.x264-GRP");
+            let result = parse_title(&title, false).expect("dotted VOST parse");
+            assert_eq!(
+                result.get("audio_languages"),
+                Some(&serde_json::json!(["ja-JP"])),
+                "{title}"
+            );
+            assert_eq!(
+                result.get("subtitle_languages"),
+                Some(&serde_json::json!([subtitle])),
+                "{title}"
+            );
+        }
+    }
+
     const EQUIVALENCE_TITLES: &[&str] = &[
         "Deadpool 2016 1080p BluRay x264 DTS-JYK",
         "The.Walking.Dead.S05E03.720p.WEB-DL.x264-ASAP[ettv]",
@@ -1875,6 +1893,8 @@ mod tests {
         "Title.2024.1080p.BluRay.REMUX.DTS-HD.MA.7.1.TrueHD.Atmos.10bit",
         "Title S01E01-E08 COMPLETE MULTi DUBBED SUBBED 1080p NF WEB-DL",
         "Example.2024.VOF.JAPANESE.VOSTFR.DTS-HD.MA.7.1.4.DV.Profile.8.1",
+        "Example.2024.JAPANESE.VOST.FR.1080p.WEB-DL.x264-GRP",
+        "Example.2024.JAPANESE.VOST.A.1080p.WEB-DL.x264-GRP",
         "[French.(SDH)] Example.S02E03.1080p.JAPANESE",
         "[fr-CA [SDH]] Dune.2021.1080p.JAPANESE",
         "[fr-CA [SDH]] The.Office.US.S01E01.1080p.JAPANESE",
